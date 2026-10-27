@@ -86,9 +86,14 @@ g := genkit.Init(ctx,
 
 The Genkit CLI provides a local Developer UI for running flows, tracing executions, and inspecting model interactions.
 
-**Install:**
+**Install:** use the npm registry (versioned, no shell piping), or download the installer script, review it, and run it as a user-local install. Do not pipe a remote script into `bash`.
 ```bash
-curl -sL cli.genkit.dev | bash
+npm install -g genkit-cli
+
+# OR download the installer, review it, then run it as a user-local install:
+curl -sLo genkit-install.sh cli.genkit.dev
+less genkit-install.sh
+local=true analytics=false bash genkit-install.sh
 ```
 
 **Verify:**

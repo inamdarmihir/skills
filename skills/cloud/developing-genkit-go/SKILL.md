@@ -102,9 +102,16 @@ your Go agent over HTTP (the server and clients are wire-compatible).
 
 `genkit start` unintrusively wraps any Go program that uses the Genkit library, running it unchanged while capturing traces from every Genkit action so you can prove tools were actually called and inspect model I/O from the terminal, even for headless checks. It forwards stdio, so interactive CLI tools that rely on stdin/stdout work without issues. Running the app directly (`go run .`) skips trace capture, so you're debugging blind. Check install with `genkit --version`.
 
-**Installation:**
+**Installation:** install from the npm registry (versioned, no shell piping), or download the installer script and review it before running it. Do not pipe a remote script into `bash`, and do not run the installer with `sudo` unless the user asks.
 ```bash
-curl -sL cli.genkit.dev | bash
+npm install -g genkit-cli
+# OR run commands directly with npx without a global install (prefix every genkit command):
+# npx genkit-cli start -- go run .
+
+# OR download the installer, review it, then run it as a user-local install:
+curl -sLo genkit-install.sh cli.genkit.dev
+less genkit-install.sh
+local=true analytics=false bash genkit-install.sh
 ```
 
 **Primary pattern (default):** prefix `genkit start --` to your normal run command. This collects telemetry from any Genkit code your program runs, whether triggered from the dev UI, your own web server/web UI, or a plain script. Starts the Developer UI (usually http://localhost:4000) for running flows, model and agent playground, and browsing traces:
