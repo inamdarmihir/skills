@@ -26,6 +26,7 @@ remediation strategy.
     -   [3. Logging/Monitoring Admin Group](#3-loggingmonitoring-admin-group-2-roles)
         (L116-L125)
     -   [4. Security Admin Group](#4-security-admin-group-9-roles) (L126-L135)
+    -   [Cleanup](#cleanup)
 
 --------------------------------------------------------------------------------
 
@@ -116,8 +117,11 @@ Resource            | Missing Permission                           | Recommended
 ## Remediation
 
 When a command fails with a `Permission Denied` error, identify the associated
-role from the mapping table and determine its **Administrative Group**. Attempt
-to sequentially grant **all** roles in that group to the deployment identity.
+role from the mapping table and determine its **Administrative Group**. After
+the user approves the grant, grant only that role to the deployment identity,
+not the whole group. The group listings below show the commands for each group;
+run them for a single approved role by setting `role` to that role instead of
+looping over the group.
 
 ### 1. Organization Admin Group (9 roles)
 
@@ -168,4 +172,24 @@ for role in roles/iam.securityAdmin roles/iam.securityReviewer roles/iam.service
         --member="user:[YOUR_ACCOUNT_EMAIL]" \
         --role="$role"
 done
+```
+
+### Cleanup
+
+Roles granted during remediation stay on the account until they are removed.
+When the deployment finishes, list every granted role and offer to remove each
+one. For organization-level roles:
+
+```bash
+gcloud organizations remove-iam-policy-binding [ORGANIZATION_ID] \
+    --member="user:[YOUR_ACCOUNT_EMAIL]" \
+    --role="[GRANTED_ROLE]"
+```
+
+For billing account roles:
+
+```bash
+gcloud billing accounts remove-iam-policy-binding [BILLING_ACCOUNT_ID] \
+    --member="user:[YOUR_ACCOUNT_EMAIL]" \
+    --role="[GRANTED_ROLE]"
 ```

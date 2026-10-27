@@ -75,9 +75,9 @@ Ensure the following prerequisites are met before beginning the deployment:
 *   **GCP Identity**: You must have a Google Cloud Organization resource set up.
 *   **Administrative IAM Roles**: The identity executing these commands must
     hold the required administrative permissions. If any step fails with a
-    `Permission Denied` error, the agent will attempt to self-remediate by
-    granting the corresponding recommended role as detailed in **Phase 2: Error
-    Recovery & Lazy Role Remediation Strategy**.
+    `Permission Denied` error, the agent will offer to grant the specific
+    missing role, but only after the user approves that grant, as detailed in
+    **Phase 2: Error Recovery & Lazy Role Remediation Strategy**.
 *   **Tools**: The `gcloud` CLI must be installed, authorized with the above
     identity, and configured for use.
 
@@ -131,6 +131,14 @@ changes.
     >     organization-level sink
     >     `[ORGANIZATION_ID]-logbucketsink-[RANDOM_HEX]`, and establish
     >     cross-project metrics scopes.
+    > *   **IAM role grants (only if a command is denied):** A `Permission
+    >     Denied` error is not overridden automatically. If it happens, I will
+    >     name the single role that supplies the denied permission (for example
+    >     `roles/orgpolicy.policyAdmin`, `roles/resourcemanager.folderAdmin`,
+    >     `roles/resourcemanager.projectCreator`, `roles/billing.user`,
+    >     `roles/logging.admin` or `roles/monitoring.admin`) and ask you before
+    >     granting it to `[ACTIVE_ACCOUNT]`. At the end I will list every role
+    >     I granted and offer to remove it.
     >
     > Do you wish to proceed with this deployment? (Yes/No)
 
@@ -145,73 +153,82 @@ complex upfront permission checks (which require a quota project), the agent
 
 Instead of testing permissions in advance, the agent will attempt to execute
 each step in the recipe. If a step fails with a `Permission Denied` error, the
-agent will attempt to self-remediate by granting the corresponding recommended
-administrative group of roles to the deployment identity and retrying the
-operation.
+agent will identify the single missing role, ask the user to approve granting
+it to the deployment identity, and retry the operation once it is granted. A
+`Permission Denied` error can be a deliberate boundary set by an administrator,
+so the agent never grants roles without approval.
 
 > [!IMPORTANT] When asked about pre-deployment readiness, prerequisites, or
 > checks to run, the agent **must** explicitly explain that the landing zone
 > deployment adopts a lazy role remediation strategy rather than upfront
 > testing, detailing all of the following in its response: 1. Confirm it will
 > execute deployment commands directly, catching any Permission Denied
-> errors. 2. Confirm it will attempt to self-remediate on failure by running the
-> exact commands `gcloud organizations add-iam-policy-binding` or `gcloud
-> billing accounts add-iam-policy-binding` to grant the entire administrative
-> group of roles to the active identity, and then retry the failed deployment
-> command. 3. List the core administrative groups that it will attempt to grant
-> (Organization Admin Group, Billing Admin Group, and Security Admin Group)
-> mapped to their key roles. 4. Confirm it will halt execution and request
-> manual administrator intervention if the self-remediation grant command fails.
+> errors. 2. Confirm that on failure it will identify the single role that
+> supplies the denied permission, ask the user for approval, and only then run
+> `gcloud organizations add-iam-policy-binding` or `gcloud billing accounts
+> add-iam-policy-binding` for that role before retrying the failed deployment
+> command. 3. List the core administrative groups (Organization Admin Group,
+> Billing Admin Group, and Security Admin Group) and their key roles so the
+> user knows which roles may be requested. 4. Confirm it will halt execution
+> and request manual administrator intervention if the user declines a grant or
+> the grant command fails. 5. Confirm it will list every role it granted when
+> the deployment finishes and offer to remove them.
 
 #### Remediation Protocol
 
 For any command that fails due to missing permissions:
 
-1.  **Identify Required Admin Group**: Determine which administrative group is
-    responsible for the failed action. Refer to the
+1.  **Identify the Missing Role**: Map the denied permission to the role that
+    supplies it using the
     [Administrative IAM Reference](references/admin-iam.md#core-administrative-groups--roles)
-    for details.
-2.  **Attempt Self-Remediation**: Grant **all** roles belonging to that
-    administrative group to the active authenticated account sequentially. Refer
-    to the
+    and note which administrative group it belongs to.
+2.  **Ask Before Granting**: Tell the user which role you want to grant, to
+    which identity, at which scope (organization or billing account), and why
+    (the denied command). Wait for explicit approval for each grant. Grant only
+    that role, not the rest of its administrative group. Refer to the
     [Administrative IAM Reference Remediation Guide](references/admin-iam.md#remediation)
-    for the copy-pasteable script commands:
+    for the copy-pasteable commands:
 
     *   **For Organization/Folder level failures (Org Admin Group or Security
-        Admin Group)**: Run `gcloud organizations add-iam-policy-binding`
-        sequentially for each role in the group.
+        Admin Group)**: Run `gcloud organizations add-iam-policy-binding` for
+        the approved role.
     *   **For Billing level failures (Billing Admin Group)**: Run `gcloud
-        billing accounts add-iam-policy-binding` sequentially for each role in
-        the group.
+        billing accounts add-iam-policy-binding` for the approved role.
 
-3.  **Halt on Remediation Failure**:
+3.  **Record Each Grant**: Keep a list of every role granted (role, scope,
+    identity) for the final report.
+4.  **Halt on Declined or Failed Grants**:
 
-    *   If the grant commands succeed, immediately retry the failed deployment
-        command.
-    *   If any of the grant commands fail (e.g., due to lack of `setIamPolicy`
-        admin rights), **halt execution** and instruct the user to ask their
-        Organization/Billing Administrator to manually grant the entire
-        administrative group of roles.
+    *   If the user approves and the grant command succeeds, immediately retry
+        the failed deployment command.
+    *   If the user declines, or the grant command fails (e.g., due to lack of
+        `setIamPolicy` admin rights), **halt execution** and instruct the user
+        to ask their Organization/Billing Administrator to grant the missing
+        role.
+5.  **Offer Cleanup**: When the deployment finishes, list every role that was
+    granted and offer to remove each one with the matching
+    `remove-iam-policy-binding` command from the
+    [Remediation Guide](references/admin-iam.md#cleanup).
 
 #### Phase-Specific Remediation Mapping
 
 *   **Phase 3: Security Guardrails (Org Policies)**:
-    *   If `gcloud org-policies set-policy` fails: Attempt to grant the entire
-        **Organization Admin Group** (9 roles) at the organization level.
+    *   If `gcloud org-policies set-policy` fails: Ask to grant
+        `roles/orgpolicy.policyAdmin` at the organization level.
 *   **Phase 4: Resource Hierarchy (Folders & Projects)**:
     *   If `gcloud resource-manager folders create` or `gcloud projects create`
-        fails: Attempt to grant the entire **Organization Admin Group** (9
-        roles) at the organization level.
+        fails: Ask to grant `roles/resourcemanager.folderAdmin` (folders) or
+        `roles/resourcemanager.projectCreator` (projects) at the organization
+        level.
 *   **Phase 4: Billing Link**:
-    *   If `gcloud billing projects link` fails: Attempt to grant the entire
-        **Billing Admin Group** (3 roles) at the billing account level, and
-        ensure the active identity is granted the **Organization Admin Group**
-        (which contains `roles/billing.user`) at the organization level.
+    *   If `gcloud billing projects link` fails: Ask to grant
+        `roles/billing.user` at the billing account level (and at the
+        organization level if the denial names the organization). Ask for
+        `roles/billing.admin` only if the denied permission requires it.
 *   **Phase 5: Centralized Logging & Monitoring**:
-    *   If `gcloud logging sinks create` fails at org level: Attempt to grant
-        the entire **Logging/Monitoring Admin Group** (2 roles:
-        `roles/logging.admin`, `roles/monitoring.admin`) and the **Security
-        Admin Group** (9 roles) at the organization level.
+    *   If `gcloud logging sinks create` fails at org level: Ask to grant
+        `roles/logging.admin` at the organization level. If metrics scope
+        linking fails, ask to grant `roles/monitoring.admin`.
 
 ### Phase 3: Security Guardrails (Org Policies)
 
