@@ -113,16 +113,22 @@ When generating the DPoP Proof JWT in `createDPoPProof`:
     `https://oauth2.googleapis.com/token`.
 -   `"iat"`: Current integer epoch timestamp in seconds
     (`Math.floor(Date.now() / 1000)`).
--   `"jti"` (Critical Invariant):
-    1.  If an explicit `jti` argument is provided to `createDPoPProof`, use that
-        exact string over all others.
-    2.  Otherwise, if an `authCode` argument is provided (during initial code
-        exchange), set `jti = await calculateAuthCodeJti(authCode)` where
-        `calculateAuthCodeJti` computes `base64url(sha256(authCode))` to ensure
-        the DPoP proof is cryptographically bound to the authorization code.
-    3.  Only if neither `jti` nor `authCode` is provided, generate a fresh
-        cryptographic random string via `generateRandomString()` (such as
-        `crypto.getRandomValues(new Uint8Array(24))` base64url encoded).
+-   `"jti"` (Critical Invariant): RFC 9449 Section 4.2 requires a unique `jti`
+    for every DPoP proof.
+    1.  Generate a fresh cryptographic random string via
+        `generateRandomString()` (such as
+        `crypto.getRandomValues(new Uint8Array(24))` base64url encoded) for
+        every proof, including authorization code exchanges, token refreshes
+        and `use_dpop_nonce` retries.
+    2.  Never derive `jti` from other request data such as the authorization
+        code, because the same input would repeat the same `jti` across
+        proofs.
+    3.  If an explicit `jti` argument is provided to `createDPoPProof`, use that
+        exact string. The caller is then responsible for making it unique for
+        each proof; production code should normally omit it.
+    4.  Client-side uniqueness does not by itself prevent replay. The
+        authorization server must also reject reused `jti` values, so do not
+        assume a replayed proof will be refused.
 -   `"ath"` (Optional): If an `accessToken` argument is provided for RFC 9449
     resource requests, compute `base64url(sha256(accessToken))` via
     `calculateATH(accessToken)` and inject it (RFC 9449 Section 6.1).
@@ -137,7 +143,7 @@ export async function generateDPoPKeyPair() // -> { publicKey, privateKey } (pri
 export async function exportPublicJWK(publicKey) // -> { kty: 'EC', crv: 'P-256', x, y }
 
 // 2. Proof generation & validation
-export async function createDPoPProof({ privateKey, publicKey, htm, htu, nonce, accessToken, authCode, jti }) // -> signed JWT string
+export async function createDPoPProof({ privateKey, publicKey, htm, htu, nonce, accessToken, jti }) // -> signed JWT string
 export async function verifyDPoPProof(dpopProofJwt) // -> { isValid: boolean, header, payload, error }
 export function sanitizeHTU(htu) // -> URL stripped of query and hash: const u = new URL(htu); return `${u.origin}${u.pathname}`;
 
@@ -148,7 +154,6 @@ export function stringToBase64Url(str) // -> UTF-8 string to base64url
 export function base64UrlToString(str) // -> base64url to UTF-8 string
 export function generateRandomString(byteLength = 32) // -> cryptographic random base64url string
 export async function calculateATH(accessToken) // -> base64url(sha256(accessToken)) per RFC 9449 Sec 6.1
-export async function calculateAuthCodeJti(code) // -> base64url(sha256(code))
 export async function generatePKCE() // -> { codeVerifier (>=43 chars), codeChallenge, codeChallengeMethod: 'S256' }
 ```
 
